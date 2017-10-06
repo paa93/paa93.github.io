@@ -1,0 +1,3 @@
+User-Agent: *
+
+Sitemap: https://lua.wuss.pw/sitemap.xml

